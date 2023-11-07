@@ -1,0 +1,40 @@
+name: Create and Publish Release
+
+on:
+  push:
+    branches:
+      - test
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Get latest tag
+        id: latest-tag
+        run: echo ::set-output name=tag::$(git describe --tags `git rev-list --tags --max-count=1`)
+
+      - name: Create a new release
+        uses: rymndhng/release-on-push-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          bump_version_scheme: patch
+          tag_prefix: v
+
+      - name: Docker run
+        uses: addnab/docker-run-action@v3
+        with:
+          image: nerdfonts/patcher:latest
+          options: -v "${{ github.workspace }}/origin:/in" -v "${{ github.workspace }}/result:/out"
+          run: -c
+
+      - name: List results
+        run: |
+          cd result
+          ls -al
