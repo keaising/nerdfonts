@@ -1,0 +1,48 @@
+name: Create and Publish Release
+
+on:
+  push:
+    branches:
+      - master
+  schedule:
+    - cron: "0 0 1 * *"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v2
+
+      - name: Docker run
+        uses: addnab/docker-run-action@v3
+        with:
+          image: nerdfonts/patcher:latest
+          options: -v ${{ github.workspace }}/origin:/in -v ${{ github.workspace }}/result:/out
+          run: /bin/sh /nerd/bin/scripts/docker-entrypoint.sh -c
+
+      - name: Create a new release
+        id: create_release
+        uses: rymndhng/release-on-push-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          bump_version_scheme: patch
+          tag_prefix: v
+
+      - name: List results
+        run: |
+          cd result
+          ls -al
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: result/*.ttf
+          tag: ${{ steps.create_release.outputs.tag_name }}
+          overwrite: true
+          file_glob: true
