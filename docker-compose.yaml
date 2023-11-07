@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  nerdfonts:
+    image: "nerdfonts/patcher"
+    container_name: nerdfonts
+    volumes:
+      - ./origin:/in
+      - ./result:/out
+    command: -c
+# docker compose up
