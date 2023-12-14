@@ -18,7 +18,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Docker run
         uses: addnab/docker-run-action@v3
