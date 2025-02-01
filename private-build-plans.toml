@@ -1,0 +1,15 @@
+[buildPlans.IosevkaCustom]
+family = "Iosevka Taiga"
+spacing = "term"
+serifs = "sans"
+noCvSs = false
+exportGlyphNames = true
+noLigation = true
+
+  [buildPlans.IosevkaCustom.variants]
+  inherits = "ss03"
+
+[buildPlans.IosevkaCustom.widths.Normal]
+shape = 600
+menu = 5
+css = "normal"
