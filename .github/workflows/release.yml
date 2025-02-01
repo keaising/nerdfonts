@@ -18,46 +18,60 @@ jobs:
       contents: write
       pull-requests: read
     steps:
+      - name: Install ttfautohint
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install ttfautohint -y
+
       - name: Check out currenty project
         uses: actions/checkout@v4
 
-      - name: Docker, Generate Iosevka Taiga
+      - name: Check out be5invis/Iosevka
+        uses: actions/checkout@v4
+        with:
+          repository: be5invis/Iosevka
+          path: Iosevka
+
+      - uses: actions/setup-node@v4
+      - name: Build IosevkaTaiga
+        run: |
+          cp ./private-build-plans.toml ./Iosevka/
+          cd ./Iosevka
+          ls -al
+          npm install
+          npm run build -- ttf::IosevkaTaiga
+          cp ./dist/IosevkaTaiga/TTF/* ../origin/
+          cd ..
+          ls -al ./origin
+
+      - name: Docker for NerdFonts Patch
         uses: addnab/docker-run-action@v3
         with:
-          image: avivace/iosevka-build
-          options: -v "$PWD:/work" -e "VERSION_TAG=v32.4.0"
-          run: contents::iosevka-taiga
+          image: nerdfonts/patcher:latest
+          options: -v ${{ github.workspace }}/origin:/in -v ${{ github.workspace }}/result:/out
+          run: /bin/sh /nerd/bin/scripts/docker-entrypoint.sh -c
+
+      - name: Create a new release
+        id: create_release
+        uses: rymndhng/release-on-push-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          bump_version_scheme: patch
+          tag_prefix: v
 
       - name: List results
         run: |
+          cd result
+          ls -al
+          zip IosevkaTaiga.zip Iosevka* && rm Iosevka*
           ls -al
 
-      # - name: Docker for NerdFonts Patch
-      #   uses: addnab/docker-run-action@v3
-      #   with:
-      #     image: nerdfonts/patcher:latest
-      #     options: -v ${{ github.workspace }}/origin:/in -v ${{ github.workspace }}/result:/out
-      #     run: /bin/sh /nerd/bin/scripts/docker-entrypoint.sh -c
-
-      # - name: Create a new release
-      #   id: create_release
-      #   uses: rymndhng/release-on-push-action@master
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   with:
-      #     bump_version_scheme: patch
-      #     tag_prefix: v
-
-      # - name: List results
-      #   run: |
-      #     cd result
-      #     ls -al
-
-      # - name: Upload artifacts to release
-      #   uses: svenstaro/upload-release-action@v2
-      #   with:
-      #     repo_token: ${{ secrets.GITHUB_TOKEN }}
-      #     file: result/*.ttf
-      #     tag: ${{ steps.create_release.outputs.tag_name }}
-      #     overwrite: true
-      #     file_glob: true
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: result/*.{ttf,zip}
+          tag: ${{ steps.create_release.outputs.tag_name }}
+          overwrite: true
+          file_glob: true
