@@ -1,0 +1,42 @@
+[buildPlans.IosevkaTaiga]
+
+family = "Iosevka Taiga"
+spacing = "normal"
+serifs = "sans"
+noCvSs = true
+exportGlyphNames = false
+noLigation = true
+
+  [buildPlans.IosevkaTaiga.variants]
+  inherits = "ss03"
+
+    [buildPlans.IosevkaTaiga.variants.design]
+    i = "serifed"
+    j = "serifed"
+    t = "flat-hook"
+
+
+[buildPlans.IosevkaTaiga.weights.Thin]
+shape = 100
+menu = 100
+css = 100
+
+[buildPlans.IosevkaTaiga.weights.Regular]
+shape = 400
+menu = 400
+css = 400
+
+[buildPlans.IosevkaTaiga.weights.Bold]
+shape = 700
+menu = 700
+css = 700
+
+[buildPlans.IosevkaTaiga.weights.Heavy]
+shape = 900
+menu = 900
+css = 900
+
+[buildPlans.IosevkaTaiga.widths.Normal]
+shape = 600
+menu = 5
+css = "normal"
