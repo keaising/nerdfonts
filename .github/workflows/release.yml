@@ -15,7 +15,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Decide whether to build
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "triggered by $GITHUB_EVENT_NAME, building"
+            exit 0
+          fi
+          image=$(curl -fsS https://hub.docker.com/v2/repositories/nerdfonts/patcher/tags/latest | jq -r .last_updated) || image=""
+          latest=$(gh release view -R "$GITHUB_REPOSITORY" --json publishedAt --jq .publishedAt 2>/dev/null || echo 1970-01-01T00:00:00Z)
+          echo "patcher image updated: ${image:-unknown}"
+          echo "latest release:        $latest"
+          if [ -z "$image" ] || [[ ! "$image" < "$latest" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "new patcher image available, building"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "patcher image unchanged since the last release, skipping"
+          fi
+
   build-and-release:
+    needs: check
+    if: needs.check.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -24,29 +54,7 @@ jobs:
       - name: Check out current project
         uses: actions/checkout@v7
 
-      - name: Check for a newer patcher image
-        id: gate
-        if: github.event_name == 'schedule'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          image=$(curl -fsS https://hub.docker.com/v2/repositories/nerdfonts/patcher/tags/latest | jq -r .last_updated) || image=""
-          latest=$(gh release view --json publishedAt --jq .publishedAt 2>/dev/null || echo 1970-01-01T00:00:00Z)
-          echo "patcher image updated: ${image:-unknown}"
-          echo "latest release:        $latest"
-          if [ -z "$image" ]; then
-            echo "cannot read Docker Hub, running anyway"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          elif [[ ! "$image" < "$latest" ]]; then
-            echo "patcher image is newer than the last release"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "patcher image unchanged since the last release, skipping"
-          fi
-
       - name: Patch with Nerd Fonts
-        if: github.event_name != 'schedule' || steps.gate.outputs.run == 'true'
         run: |
           set -euo pipefail
           mkdir -p result
@@ -56,7 +64,6 @@ jobs:
             nerdfonts/patcher:latest -c
 
       - name: Verify patched fonts
-        if: github.event_name != 'schedule' || steps.gate.outputs.run == 'true'
         run: |
           set -euo pipefail
           ls -l result
@@ -71,7 +78,6 @@ jobs:
           fi
 
       - name: Create a new release
-        if: github.event_name != 'schedule' || steps.gate.outputs.run == 'true'
         id: create_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -92,7 +98,6 @@ jobs:
           gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
 
       - name: Upload artifacts to release
-        if: github.event_name != 'schedule' || steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
