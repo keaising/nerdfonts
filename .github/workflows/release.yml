@@ -10,64 +10,88 @@ on:
     - cron: "0 0 1 * *"
   workflow_dispatch:
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: write
-      pull-requests: read
     steps:
-      - name: Install ttfautohint
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install ttfautohint -y
-
-      - name: Check out currenty project
-        uses: actions/checkout@v4
+      - name: Check out current project
+        uses: actions/checkout@v7
 
       - name: Check out be5invis/Iosevka
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: be5invis/Iosevka
           path: Iosevka
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Iosevka/package-lock.json
+
       - name: Build IosevkaTaiga
         run: |
+          set -euo pipefail
           cp ./private-build-plans.toml ./Iosevka/
           cd ./Iosevka
-          ls -al
-          npm install
+          npm ci
           npm run build -- ttf::IosevkaTaiga
           cp ./dist/IosevkaTaiga/TTF/* ../origin/
-          cd ..
-          ls -al ./origin
 
-      - name: Docker for NerdFonts Patch
-        uses: addnab/docker-run-action@v3
-        with:
-          image: nerdfonts/patcher:latest
-          options: -v ${{ github.workspace }}/origin:/in -v ${{ github.workspace }}/result:/out
-          run: /bin/sh /nerd/bin/scripts/docker-entrypoint.sh -c
+      - name: Patch with Nerd Fonts
+        run: |
+          set -euo pipefail
+          mkdir -p result
+          docker run --rm \
+            -v "$PWD/origin:/in" \
+            -v "$PWD/result:/out" \
+            nerdfonts/patcher:latest -c
+
+      - name: Verify patched fonts
+        run: |
+          set -euo pipefail
+          ls -l result
+          count=$(find result -maxdepth 1 -type f | wc -l)
+          echo "patched files: $count"
+          test "$count" -gt 0
+          unexpected=$(find result -maxdepth 1 -type f ! -name '*.ttf' ! -name '*.otf')
+          if [ -n "$unexpected" ]; then
+            echo "unexpected files in result, they would be uploaded too:"
+            echo "$unexpected"
+            exit 1
+          fi
 
       - name: Create a new release
         id: create_release
-        uses: rymndhng/release-on-push-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          bump_version_scheme: patch
-          tag_prefix: v
-
-      - name: List results
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -al ./result
+          set -euo pipefail
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          if [ -z "$latest" ]; then
+            tag=v0.0.1
+          else
+            version=${latest#v}
+            major=${version%%.*}
+            rest=${version#*.}
+            minor=${rest%%.*}
+            patch=${rest#*.}
+            tag="v${major}.${minor}.$((patch + 1))"
+          fi
+          echo "tag_name=$tag" >> "$GITHUB_OUTPUT"
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --generate-notes
 
       - name: Upload artifacts to release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: result/*.ttf
-          tag: ${{ steps.create_release.outputs.tag_name }}
-          overwrite: true
-          file_glob: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.create_release.outputs.tag_name }}" result/* --clobber
